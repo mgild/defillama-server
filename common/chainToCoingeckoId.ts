@@ -177,6 +177,11 @@ export const chainToCoingeckoId = {
   occ: "edu-chain",
   wc: "world-chain",
   soneium: "soneium",
+  Hyperliquid: "hyperevm",
+  unichain: "unichain",
+  ink: "ink",
+  swellchain: "swellchain",
+  plume_mainnet: "plume-network"
 };
 
 export default chainToCoingeckoId;

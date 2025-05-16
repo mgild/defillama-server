@@ -25,14 +25,12 @@ const protocolChainSetMap: {
 parentProtocols.forEach((protocol: any) => {
   parentProtocolsInfoMap[protocol.id] = protocol
   protocolChainSetMap[protocol.id] = new Set(protocol.chains ?? [])
-  protocol.chainSet = protocolChainSetMap[protocol.id]
   protocol.childProtocols = []
 })
 
 protocols.forEach((protocol: any) => {
   protocolInfoMap[protocol.id] = protocol
   protocolChainSetMap[protocol.id] = new Set(protocol.chains ?? [])
-  protocol.chainSet = protocolChainSetMap[protocol.id]
   if (protocol.parentProtocol) {
     parentProtocolsInfoMap[protocol.parentProtocol].childProtocols.push(protocol)
   }
@@ -118,7 +116,8 @@ async function _storeAppMetadata() {
     volumeData,
     perpsData,
     aggregatorsData,
-    optionsData,
+    optionsNotionalData,
+    optionsPremiumData,
     perpsAggregatorsData,
     bridgeAggregatorsData,
     emmissionsData,
@@ -151,6 +150,7 @@ async function _storeAppMetadata() {
     readRouteData('/dimensions/derivatives/dv-lite').catch(() => ({ protocols: {} })),
     readRouteData('/dimensions/aggregators/dv-lite').catch(() => ({ protocols: {} })),
     readRouteData('/dimensions/options/dnv-lite').catch(() => ({ protocols: {} })),
+    readRouteData('/dimensions/options/dpv-lite').catch(() => ({ protocols: {} })),
     readRouteData('/dimensions/aggregator-derivatives/dv-lite').catch(() => ({ protocols: {} })),
     readRouteData('/dimensions/bridge-aggregators/dbv-lite').catch(() => ({ protocols: {} })),
     fetchJson(`https://defillama-datasets.llama.fi/emissionsProtocolsList`).catch(() => ([])),
@@ -180,18 +180,21 @@ async function _storeAppMetadata() {
       mapKey: 'revenue', data: revenueData, finalDataKeys: {
         dailyRevenue: 'total24h',
         revenue30d: 'total30d',
+        allTimeRevenue: 'totalAllTime',
       }
     },
     {
       mapKey: 'bribe', data: feeBribeRevenueData, finalDataKeys: {
         dailyBribesRevenue: 'total24h',
         bribesRevenue30d: 'total30d',
+        allTimeBribesRevenue: 'totalAllTime',
       }
     },
     {
       mapKey: 'tokenTax', data: feeTokenTaxData, finalDataKeys: {
         dailyTokenTaxes: 'total24h',
         tokenTaxesRevenue30d: 'total30d',
+        allTimeTokenTaxes: 'totalAllTime',
       }
     },
     {
@@ -213,7 +216,7 @@ async function _storeAppMetadata() {
       }
     },
     {
-      mapKey: 'options', data: optionsData, finalDataKeys: {
+      mapKey: 'options', data: optionsPremiumData, finalDataKeys: {
         dailyOptionsVolume: 'total24h',
       }
     },
@@ -281,6 +284,13 @@ async function _storeAppMetadata() {
     })
 
     tvlData.protocols.forEach((protocol: any) => {
+      let id = protocol.id ?? protocol.defillamaId 
+      if (id && protocol.chains?.length) {
+        if (!protocolChainSetMap[id]) protocolChainSetMap[id] = new Set([])
+        protocol.chains.forEach((chain: any) => {
+          protocolChainSetMap[id].add(chain)
+        })
+      }
 
       if (protocol.category) {
         if (!protocolCategoriesMap[protocol.category]) {
@@ -313,10 +323,10 @@ async function _storeAppMetadata() {
       dimensionsMap[mapKey] = dataMap
       data.protocols.map((pData: any) => {
         let id = pData.id ?? pData.defillamaId ?? pData.name
-        if (protocolChainSetMap[id] && pData.chains?.length) {
-          const protocolChainSet = protocolChainSetMap[id]
+        if ( pData.chains?.length) {
+          if (!protocolChainSetMap[id]) protocolChainSetMap[id] = new Set([])
           pData.chains.forEach((chain: any) => {
-              protocolChainSet.add(chain)
+            protocolChainSetMap[id].add(chain)
           })
         }
 
@@ -507,6 +517,38 @@ async function _storeAppMetadata() {
       }
     }
 
+    for (const protocol of feeBribeRevenueData.protocols) {
+      if (!protocol.totalAllTime) continue; // skip if this totalAllTime field is missing
+
+      finalProtocols[protocol.defillamaId] = {
+        ...finalProtocols[protocol.defillamaId],
+        bribeRevenue: true
+      }
+
+      if (protocol.parentProtocol) {
+        finalProtocols[protocol.parentProtocol] = {
+          ...finalProtocols[protocol.parentProtocol],
+          bribeRevenue: true
+        }
+      }
+    }
+
+    for (const protocol of feeTokenTaxData.protocols) {
+      if (!protocol.totalAllTime) continue; // skip if this totalAllTime field is missing
+
+      finalProtocols[protocol.defillamaId] = {
+        ...finalProtocols[protocol.defillamaId],
+        tokenTax: true
+      }
+
+      if (protocol.parentProtocol) {
+        finalProtocols[protocol.parentProtocol] = {
+          ...finalProtocols[protocol.parentProtocol],
+          tokenTax: true
+        }
+      }
+    }
+
     for (const chain of feesData.allChains ?? []) {
       finalChains[slug(chain)] = {
         ...(finalChains[slug(chain)] ?? { name: chain }),
@@ -597,7 +639,7 @@ async function _storeAppMetadata() {
       }
     }
 
-    for (const protocol of optionsData.protocols) {
+    for (const protocol of optionsPremiumData.protocols) {
       finalProtocols[protocol.defillamaId] = {
         ...finalProtocols[protocol.defillamaId],
         options: true
@@ -610,7 +652,28 @@ async function _storeAppMetadata() {
         }
       }
     }
-    for (const chain of optionsData.allChains ?? []) {
+    for (const chain of optionsPremiumData.allChains ?? []) {
+      finalChains[slug(chain)] = {
+        ...(finalChains[slug(chain)] ?? { name: chain }),
+        options: true
+      }
+    }
+
+
+    for (const protocol of optionsNotionalData.protocols) {
+      finalProtocols[protocol.defillamaId] = {
+        ...finalProtocols[protocol.defillamaId],
+        options: true
+      }
+
+      if (protocol.parentProtocol) {
+        finalProtocols[protocol.parentProtocol] = {
+          ...finalProtocols[protocol.parentProtocol],
+          options: true
+        }
+      }
+    }
+    for (const chain of optionsNotionalData.allChains ?? []) {
       finalChains[slug(chain)] = {
         ...(finalChains[slug(chain)] ?? { name: chain }),
         options: true
@@ -672,13 +735,13 @@ async function _storeAppMetadata() {
         r[k] = finalProtocols[k]
         if (protocolInfoMap[k]) {
           r[k].displayName = protocolInfoMap[k].name
-          r[k].chains = protocolInfoMap[k].chainSet ? Array.from(protocolInfoMap[k].chainSet) : []
+          r[k].chains = protocolChainSetMap[k] ? Array.from(protocolChainSetMap[k]) : []
         }
         if (parentProtocolsInfoMap[k]) {
           r[k].displayName = parentProtocolsInfoMap[k].name
           const chainSet = new Set()
           parentProtocolsInfoMap[k].childProtocols?.forEach((p: any) => {
-            const chains = p.chainSet ? Array.from(p.chainSet) : []
+            const chains = protocolChainSetMap[p.id] ? Array.from(protocolChainSetMap[p.id]) : []
             chains.forEach((chain: any) => chainSet.add(chain))
           })
           r[k].chains = Array.from(chainSet)
@@ -687,7 +750,6 @@ async function _storeAppMetadata() {
       }, {})
 
     await storeRouteData('/config/smol/appMetadata-protocols.json', sortedProtocolData)
-
 
     for (const chain of bridgesData.chains) {
       if (finalChains[slug(chain.name)]) {
@@ -897,17 +959,17 @@ async function _storeAppMetadata() {
 
       const similarProtocolsSet = new Set()
 
-      const protocolsWithCommonChains = [...similarProtocols].sort((a, b) => b.commonChains - a.commonChains).slice(0, 5)
+      const protocolsWithCommonChains = [...similarProtocols].sort((a, b) => b.commonChains - a.commonChains).slice(0, 10)
 
       // first 5 are the protocols that are on same chain + same category
       protocolsWithCommonChains.forEach((p) => similarProtocolsSet.add(p.name))
 
       // last 5 are the protocols in same category
-      similarProtocols.forEach((p: any) => {
-        if (similarProtocolsSet.size < 10) {
-          similarProtocolsSet.add(p.name)
-        }
-      })
+      // similarProtocols.forEach((p: any) => {
+      //   if (similarProtocolsSet.size < 10) {
+      //     similarProtocolsSet.add(p.name)
+      //   }
+      // })
 
 
 

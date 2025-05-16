@@ -53,6 +53,7 @@ async function storeCoinData(coinData: Write[]) {
       timestamp: c.timestamp,
       symbol: c.symbol,
       confidence: c.confidence,
+      volume: c.volume
     }))
     .filter((c: Write) => c.symbol != null);
   await Promise.all([
@@ -69,6 +70,7 @@ async function storeHistoricalCoinData(coinData: Write[]) {
     PK: c.PK,
     price: c.price,
     confidence: c.confidence,
+    volume: c.volume
   }));
   await Promise.all([
     produceKafkaTopics(
@@ -174,16 +176,16 @@ async function getSymbolAndDecimals(
     } catch (e) {
       return;
     }
-  } else if (chain == "hyperliquid") {
-    await cacheHyperliquidTokens();
-    const token = ((await hyperliquidTokens).tokens as any[]).find(
-      (t) => t.tokenId === tokenAddress,
-    );
-    if (!token) return;
-    return {
-      decimals: token.weiDecimals,
-      symbol: token.name,
-    };
+    // } else if (chain == "hyperliquid") {
+    //   await cacheHyperliquidTokens();
+    //   const token = ((await hyperliquidTokens).tokens as any[]).find(
+    //     (t) => t.tokenId === tokenAddress,
+    //   );
+    //   if (!token) return;
+    //   return {
+    //     decimals: token.weiDecimals,
+    //     symbol: token.name,
+    //   };
   } else if (chain == "aptos") {
     const res = await fetch(
       `${process.env.APTOS_RPC}/v1/accounts/${tokenAddress.substring(
@@ -292,6 +294,7 @@ async function getAndStoreCoins(coins: Coin[], rejected: Coin[]) {
           timestamp: data.last_updated_at,
           symbol: idToSymbol[cgId].toUpperCase(),
           confidence: 0.99,
+          volume: data.usd_24h_vol
         });
     });
 
